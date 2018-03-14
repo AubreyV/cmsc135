@@ -3,7 +3,7 @@ import sim
 
 def launch(switch_type=sim.config.default_switch_type,
            host_type=sim.config.default_host_type,
-           n=2):
+           n=4):
     """
     Creates a very simple linear topology.
 
