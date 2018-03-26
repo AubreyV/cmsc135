@@ -2,6 +2,7 @@
 
 import sim.api as api
 import sim.basics as basics
+import time
 
 # We define infinity as a distance of 16.
 INFINITY = 16
@@ -17,6 +18,8 @@ class DVRouter(basics.DVRouterBase):
         Called when the instance is initialized.
         You probably want to do some additional initialization here.
         """
+        self.routing_table = {} # {dest : {cost, next_hop}}
+        self.neighbors = {} # {port : latency}
         self.start_timer()  # Starts calling handle_timer() at correct rate
 
     def handle_link_up(self, port, latency):
@@ -25,7 +28,7 @@ class DVRouter(basics.DVRouterBase):
         The port attached to the link and the link latency are passed
         in.
         """
-        pass
+        self.neighbors[port] = latency
 
     def handle_link_down(self, port):
         """
@@ -42,10 +45,23 @@ class DVRouter(basics.DVRouterBase):
         You definitely want to fill this in.
         """
         #self.log("RX %s on %s (%s)", packet, port, api.current_time())
+        
         if isinstance(packet, basics.RoutePacket):
-            self.send(packet, port)
+            print "switch: " + self.name
+            print "src: " + packet.src.name
+            print "latency: " + str(packet.latency)
+            print "dst: " + packet.destination.name
+            print "port: " + str(port)
         elif isinstance(packet, basics.HostDiscoveryPacket):
-            pass
+            # should monitor for these packets so it knows what hosts exist
+            # and where they are attached.
+            # should never send/forward these packets
+            latency = self.neighbors[port]
+            self.neighbors.pop(port)
+            self.routing_table[packet.src.name] = port
+            
+            for port in self.neighbors:
+                self.send(basics.RoutePacket(packet.src, latency), port)
         else:
             # Totally wrong behavior for the sake of demonstration only: send
             # the packet back to where it came from!

@@ -65,18 +65,18 @@ class LearningSwitch(api.Entity):
 
         self.forwarding_table[packet.src.name] = in_port
 
-        print "src: " + packet.src.name
-        print "dst: " + packet.dst.name
-        print "port: " + str(in_port)
-        print "switch: " + self.name
-        print self.forwarding_table
+        # print "src: " + packet.src.name
+        # print "dst: " + packet.dst.name
+        # print "port: " + str(in_port)
+        # print "switch: " + self.name
+        # print self.forwarding_table
 
         if packet.dst.name in self.forwarding_table:
-            print "not flooding"
+            # print "not flooding"
             self.send(packet, self.forwarding_table[packet.dst.name], flood=False)
         else:
             # Flood out all ports except the input port
-            print "flooding"
+            # print "flooding"
             self.send(packet, in_port, flood=True)
         
         
