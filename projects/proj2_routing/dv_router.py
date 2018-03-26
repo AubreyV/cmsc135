@@ -15,44 +15,35 @@ class DVRouter(basics.DVRouterBase):
     def __init__(self):
         """
         Called when the instance is initialized.
-
         You probably want to do some additional initialization here.
-
         """
         self.start_timer()  # Starts calling handle_timer() at correct rate
 
     def handle_link_up(self, port, latency):
         """
         Called by the framework when a link attached to this Entity goes up.
-
         The port attached to the link and the link latency are passed
         in.
-
         """
         pass
 
     def handle_link_down(self, port):
         """
         Called by the framework when a link attached to this Entity does down.
-
         The port number used by the link is passed in.
-
         """
         pass
 
     def handle_rx(self, packet, port):
         """
         Called by the framework when this Entity receives a packet.
-
         packet is a Packet (or subclass).
         port is the port number it arrived on.
-
         You definitely want to fill this in.
-
         """
         #self.log("RX %s on %s (%s)", packet, port, api.current_time())
         if isinstance(packet, basics.RoutePacket):
-            pass
+            self.send(packet, port)
         elif isinstance(packet, basics.HostDiscoveryPacket):
             pass
         else:
@@ -63,10 +54,8 @@ class DVRouter(basics.DVRouterBase):
     def handle_timer(self):
         """
         Called periodically.
-
         When called, your router should send tables to neighbors.  It
         also might not be a bad place to check for whether any entries
         have expired.
-
         """
-        pass
+    pass
