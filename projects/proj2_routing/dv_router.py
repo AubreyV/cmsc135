@@ -18,7 +18,7 @@ class DVRouter(basics.DVRouterBase):
         Called when the instance is initialized.
         You probably want to do some additional initialization here.
         """
-        self.routing_table = {} # {dest : {cost, next_hop}}
+        self.routing_table = {} # {device : {port, cost}}
         self.neighbors = {} # {port : latency}
         self.start_timer()  # Starts calling handle_timer() at correct rate
 
@@ -29,6 +29,7 @@ class DVRouter(basics.DVRouterBase):
         in.
         """
         self.neighbors[port] = latency
+        # self.send(basics.RoutePacket(self, latency), port)
 
     def handle_link_down(self, port):
         """
@@ -52,20 +53,35 @@ class DVRouter(basics.DVRouterBase):
             print "latency: " + str(packet.latency)
             print "dst: " + packet.destination.name
             print "port: " + str(port)
+
+            if port in self.neighbors:
+                self.routing_table[packet.src.name] = {'port' : port, 'cost' : self.neighbors.get(port)}
+
+            self.routing_table[packet.destination.name] = {'port' : port, 'cost' : self.neighbors.get(port) + 1 }
         elif isinstance(packet, basics.HostDiscoveryPacket):
             # should monitor for these packets so it knows what hosts exist
             # and where they are attached.
             # should never send/forward these packets
             latency = self.neighbors[port]
-            self.neighbors.pop(port)
-            self.routing_table[packet.src.name] = port
+            self.routing_table[packet.src.name] = {'port' : port, 'cost' : latency}
             
-            for port in self.neighbors:
-                self.send(basics.RoutePacket(packet.src, latency), port)
+            print "src: " + packet.src.name
+            print "on port: " + str(port)
+
+            for p in self.neighbors:
+                if p != port:
+                    self.send(basics.RoutePacket(packet.src, latency), p)
         else:
             # Totally wrong behavior for the sake of demonstration only: send
             # the packet back to where it came from!
-            self.send(packet, port=port)
+            print "ping"
+            print "src: " + packet.src.name
+            print "port: " + str(port)
+            print "dest" + packet.dst.name
+
+            print self.routing_table
+            if packet.dst.name in self.routing_table:
+                self.send(packet, self.routing_table[packet.dst.name]['port'])
 
     def handle_timer(self):
         """
