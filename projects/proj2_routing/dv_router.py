@@ -9,7 +9,7 @@ INFINITY = 16
 
 class DVRouter(basics.DVRouterBase):
     # NO_LOG = True # Set to True on an instance to disable its logging
-    # POISON_MODE = True # Can override POISON_MODE here
+    POISON_MODE = True # Can override POISON_MODE here
     # DEFAULT_TIMER_INTERVAL = 5 # Can override this yourself for testing
 
     def __init__(self):
@@ -34,7 +34,9 @@ class DVRouter(basics.DVRouterBase):
         """
         # store distance of neighbors
         self.neighbors[port] = latency
-        # self.send(basics.RoutePacket(self, latency), port)
+        
+        for n in self.routing_table:
+            self.send(basics.RoutePacket(n, self.routing_table[n]['cost']), port)
 
     def handle_link_down(self, port):
         """
@@ -60,11 +62,33 @@ class DVRouter(basics.DVRouterBase):
         if isinstance(packet, basics.RoutePacket):
             current_time = api.current_time()
 
-            if port in self.neighbors:
-                self.routing_table[packet.src.name] = {'port' : port, 'cost' : self.neighbors.get(port), 'time' : current_time}
+            # print "switch: " + self.name
+            # print "Latency: " + str(packet.latency + self.neighbors[port])
+            
+            if packet.destination not in self.routing_table:
+                self.routing_table[packet.destination] = {'port' : port, 'cost' : self.neighbors.get(port) + packet.latency, 'time' : current_time }
+                # print "added to routing table: " + packet.destination.name + "at port " + str(port) + " with latency of " + str(self.routing_table[packet.destination.name]['cost'])
+                for p in self.neighbors:
+                    if p != port:
+                        self.send(basics.RoutePacket(packet.destination, self.neighbors[port] + packet.latency), p)
+            else:
+                if self.routing_table[packet.destination]['port'] != port:
+                    min_cost = self.routing_table[packet.destination]['cost']
+                else:
+                    min_cost = self.neighbors[port] + packet.latency
 
-            self.routing_table[packet.destination.name] = {'port' : port, 'cost' : self.neighbors.get(port) + 1, 'time' : current_time }
+                if packet.latency + self.neighbors[port] <= min_cost:
+                    min_cost = packet.latency + self.neighbors[port]
 
+                if min_cost != self.routing_table[packet.destination]['cost']:
+                    self.routing_table[packet.destination] = {'port': port, 'cost' : min_cost, 'time' : current_time}
+
+                for p in self.neighbors:
+                    if p != port:
+                        self.send(basics.RoutePacket(packet.destination, min_cost), p)
+
+            
+        # dapat na send ghap kita dd hin routepacket ha other neighbors na switch
         elif isinstance(packet, basics.HostDiscoveryPacket):
             # should monitor for these packets so it knows what hosts exist
             # and where they are attached.
@@ -78,7 +102,7 @@ class DVRouter(basics.DVRouterBase):
             for p in self.neighbors:
                 # do not send to the source of the discovery packet
                 if p != port:
-                    self.send(basics.RoutePacket(packet.src, latency), p)
+                    self.send(basics.RoutePacket(packet.src.name, latency), p)
         else:
             # Totally wrong behavior for the sake of demonstration only: send
             # the packet back to where it came from!
@@ -100,6 +124,14 @@ class DVRouter(basics.DVRouterBase):
         # print self.routing_table
         for n in self.routing_table:
             if (api.current_time() - self.routing_table[n]['time']) > 15.0:
-                print "deleted: " + n
+                # print "deleted: " + n
                 self.expired_routes[n] = self.routing_table[n]['port']
+
+        for n in self.expired_routes:
+            self.routing_table.pop(n, "None")
+
+        for n in self.neighbors:
+            for d in self.routing_table:
+                if n == self.routing_table[d]['port']:
+                    self.send(basics.RoutePacket(d, self.routing_table[d]['cost']), n)
 
