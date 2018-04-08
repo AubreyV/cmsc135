@@ -18,8 +18,10 @@ class DVRouter(basics.DVRouterBase):
         Called when the instance is initialized.
         You probably want to do some additional initialization here.
         """
-        self.routing_table = {} # {device : {port, cost}}
+        self.routing_table = {} # {device : {'port':port, 'cost':cost, 'time':time}}
+        self.expired_routes = {} # {device : port}
         self.neighbors = {} # {port : latency}
+        self.all_routes = {} # {device : {'port':port, 'cost':cost, 'time':time}}
         self.start_timer()  # Starts calling handle_timer() at correct rate
 
     def handle_link_up(self, port, latency):
@@ -28,8 +30,11 @@ class DVRouter(basics.DVRouterBase):
         The port attached to the link and the link latency are passed
         in.
         """
+        # store distance of neighbors
         self.neighbors[port] = latency
-        # self.send(basics.RoutePacket(self, latency), port)
+        # print "switch " + self.name + " has a neighbor in port " + str(port) + " with latency of " + str(latency)
+        for n in self.routing_table:
+            self.send(basics.RoutePacket(n, self.routing_table[n]['cost']), port)
 
     def handle_link_down(self, port):
         """
@@ -48,40 +53,57 @@ class DVRouter(basics.DVRouterBase):
         #self.log("RX %s on %s (%s)", packet, port, api.current_time())
         
         if isinstance(packet, basics.RoutePacket):
-            print "switch: " + self.name
-            print "src: " + packet.src.name
-            print "latency: " + str(packet.latency)
-            print "dst: " + packet.destination.name
-            print "port: " + str(port)
+            
+            latency = packet.latency + self.neighbors[port]
+            current_time = api.current_time()
+            self.all_routes[packet.destination] = {'port' : port, 'cost' : latency, 'time' : current_time}
+            # print "switch " + self.name + " received a route from " + packet.src.name + " at port " + str(port) + " with latency " + str(latency) + " with destination " + packet.destination
 
-            if port in self.neighbors:
-                self.routing_table[packet.src.name] = {'port' : port, 'cost' : self.neighbors.get(port)}
-
-            self.routing_table[packet.destination.name] = {'port' : port, 'cost' : self.neighbors.get(port) + 1 }
+            if packet.destination not in self.routing_table:
+                self.routing_table[packet.destination] = {'port' : port, 'cost' : latency, 'time' : current_time }
+                # print "added to routing table: " + packet.destination.name + "at port " + str(port) + " with latency of " + str(self.routing_table[packet.destination.name]['cost'])
+                for p in self.neighbors:
+                    if p != port:
+                        self.send(basics.RoutePacket(packet.destination, self.neighbors[port] + packet.latency), p)
+                    else:
+                        if self.POISON_MODE:
+                            self.send(basics.RoutePacket(packet.destination, INFINITY), p)
+            else:
+                old_latency = self.routing_table[packet.destination]['cost']
+                # print "switch " + self.name + " found a new route from " + packet.src.name + " at port " + str(port) + " with latency " + str(latency) + " with destination " + packet.destination
+                if old_latency > latency:
+                    self.routing_table[packet_destination]['cost'] = latency
+                    self.routing_table[packet_destination]['port'] = port
+                    # print "switch " + self.name + " updated its routing table." + " route to " + packet.destination + " is from " + packet.src.name + " at port " + str(self.routing_table[packet_destination]['port'])
+                    for n in self.neighbors:
+                        if n != port:
+                            self.send(basics.RoutePacket(packet.destination, latency), n)                        
+            
+        # dapat na send ghap kita dd hin routepacket ha other neighbors na switch
         elif isinstance(packet, basics.HostDiscoveryPacket):
             # should monitor for these packets so it knows what hosts exist
             # and where they are attached.
             # should never send/forward these packets
-            latency = self.neighbors[port]
-            self.routing_table[packet.src.name] = {'port' : port, 'cost' : latency}
+ 
+            # get distance to include in route packet
+            if self.neighbors.has_key(port):
+                latency = self.neighbors[port]
+                # print "switch: " + self.name + " is connected to " + packet.src.name + " at port " + str(port) + " with latency " + str(latency)
+                self.neighbors.pop(port, None)
+                current_time = api.current_time()
+                self.all_routes[packet.src.name] = {'port' : port, 'cost' : latency, 'time' : current_time}
+                self.routing_table[packet.src.name] = {'port' : port, 'cost' : latency, 'time' : current_time}
             
-            print "src: " + packet.src.name
-            print "on port: " + str(port)
-
-            for p in self.neighbors:
-                if p != port:
-                    self.send(basics.RoutePacket(packet.src, latency), p)
+                for p in self.neighbors:
+                    self.send(basics.RoutePacket(packet.src.name, latency), p)
         else:
             # Totally wrong behavior for the sake of demonstration only: send
             # the packet back to where it came from!
-            print "ping"
-            print "src: " + packet.src.name
-            print "port: " + str(port)
-            print "dest" + packet.dst.name
-
-            print self.routing_table
+            # =====ping=====
+            
             if packet.dst.name in self.routing_table:
-                self.send(packet, self.routing_table[packet.dst.name]['port'])
+                if packet.dst.name not in self.expired_routes:
+                    self.send(packet, self.routing_table[packet.dst.name]['port'])
 
     def handle_timer(self):
         """
@@ -90,4 +112,27 @@ class DVRouter(basics.DVRouterBase):
         also might not be a bad place to check for whether any entries
         have expired.
         """
-    pass
+        # print self.routing_table
+    
+        for n in self.routing_table:
+            if (api.current_time() - self.routing_table[n]['time']) > 15.0:
+                self.expired_routes[n] = self.routing_table[n]['port']
+
+        for n in self.expired_routes:
+            self.routing_table.pop(n, None)
+
+        print "switch " + self.name + "'s routes"
+        print self.all_routes
+        # for n in self.neighbors:
+        #     if n == self.routing_table[d]['port']:          
+        #         self.send(basics.RoutePacket(d, self.routing_table[d]['cost']), self.routing_table[d]['port'])
+
+        # print "expired rotes: " + self.expired_routes
+        self.expired_routes.clear()
+        # print "expired rotes new: " + self.expired_routes
+
+        # for n in self.neighbors:
+        #     for d in self.routing_table:
+        #         if n == self.routing_table[d]['port']:
+        #             self.send(basics.RoutePacket(d, self.routing_table[d]['cost']), n)
+
